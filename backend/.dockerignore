@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+*.pyo
+.env
+dashboard.db
+dashboard.db-shm
+dashboard.db-wal
+.git
+.venv
+venv
