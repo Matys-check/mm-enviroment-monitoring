@@ -12,7 +12,7 @@ export function Footer() {
         color: T.textDim,
       }}
     >
-      © {new Date().getFullYear()} SandboxAI Dashboard • DevOps Team
+      © 2026 ZRAI Team
     </footer>
   );
 }
