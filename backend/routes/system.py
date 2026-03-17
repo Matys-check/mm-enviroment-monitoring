@@ -212,11 +212,15 @@ async def get_system_docker():
                 
                 containers = []
                 for container in client.containers.list(all=True):
+                    try:
+                        image = container.image.tags[0] if container.image.tags else "unknown"
+                    except Exception:
+                        image = container.attrs.get("Config", {}).get("Image", "unknown")
                     containers.append({
                         "id": container.short_id,
                         "name": container.name,
                         "status": container.status,
-                        "image": container.image.tags[0] if container.image.tags else "unknown"
+                        "image": image
                     })
                 
                 _docker_cache["data"] = {
