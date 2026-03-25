@@ -2,6 +2,7 @@ services:
   backend:
     build:
       context: ./backend
+      network: host
       secrets:
         - pip_conf
         - ca_cert
@@ -27,6 +28,7 @@ services:
   frontend:
     build:
       context: ./frontend
+      network: host
       args:
         - NPM_REGISTRY=${NPM_REGISTRY:-}
         - NPM_AUTH_TOKEN=${NPM_AUTH_TOKEN:-}
