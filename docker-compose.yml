@@ -2,7 +2,8 @@ services:
   backend:
     build:
       context: ./backend
-      network: host
+      dockerfile: Dockerfile
+      network: host          # <--- KLUCZOWA RÓŻNICA
       secrets:
         - pip_conf
         - ca_cert
@@ -15,7 +16,6 @@ services:
     volumes:
       - db_data:/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    pid: host
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/dashboard')"]
       interval: 30s
@@ -28,7 +28,6 @@ services:
   frontend:
     build:
       context: ./frontend
-      network: host
       args:
         - NPM_REGISTRY=${NPM_REGISTRY:-}
         - NPM_AUTH_TOKEN=${NPM_AUTH_TOKEN:-}
