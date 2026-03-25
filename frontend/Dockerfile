@@ -1,27 +1,14 @@
 # Stage 1: Build
-FROM node:20-alpine AS build
+FROM node:20 AS build
 
 ARG NPM_REGISTRY=""
 ARG NPM_AUTH_TOKEN=""
 
 WORKDIR /app
 
-# Instalujemy pakiet CA – Alpine NIE ma go domyślnie
-RUN apk add --no-cache ca-certificates
-
-# Instalacja certyfikatu z sekretu
-RUN --mount=type=secret,id=ca_cert,target=/run/secrets/ca.crt \
-    mkdir -p /usr/local/share/ca-certificates && \
-    cp /run/secrets/ca.crt /usr/local/share/ca-certificates/ca.crt && \
-    update-ca-certificates
-
-# NODE musi korzystać z certyfikatu systemowego
-ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
-
-# Konfiguracja npm + token
+# Konfiguracja npm registry jeśli podano
 RUN if [ -n "$NPM_REGISTRY" ]; then \
       echo "registry=${NPM_REGISTRY}" > .npmrc ; \
-      echo "strict-ssl=true" >> .npmrc ; \
       if [ -n "$NPM_AUTH_TOKEN" ]; then \
         REGISTRY_HOST=$(echo "$NPM_REGISTRY" | sed 's|https\?://||'); \
         echo "//${REGISTRY_HOST}:_authToken=${NPM_AUTH_TOKEN}" >> .npmrc ; \
@@ -30,16 +17,18 @@ RUN if [ -n "$NPM_REGISTRY" ]; then \
 
 COPY package.json package-lock.json ./
 
-RUN npm ci --include=dev
+# Montujemy CA cert tak jak w backendzie
+RUN --mount=type=secret,id=ca_cert,target=/etc/ssl/certs/ca.pem \
+    NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca.pem \
+    npm ci --include=dev
 
 COPY . .
 
 ENV VITE_API_URL=""
-RUN npm run build
+RUN npx vite build
 
-
-# Stage 2 – Serve via nginx
-FROM nginx:alpine
+# Stage 2: Serve via nginx
+FROM nginx:latest
 
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
