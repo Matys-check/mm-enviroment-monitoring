@@ -6,25 +6,39 @@ ARG NPM_AUTH_TOKEN=""
 
 WORKDIR /app
 
-# Configure JFrog/custom npm registry if provided
+# Instalujemy pakiet CA – Alpine NIE ma go domyślnie
+RUN apk add --no-cache ca-certificates
+
+# Instalacja certyfikatu z sekretu
+RUN --mount=type=secret,id=ca_cert,target=/run/secrets/ca.crt \
+    mkdir -p /usr/local/share/ca-certificates && \
+    cp /run/secrets/ca.crt /usr/local/share/ca-certificates/ca.crt && \
+    update-ca-certificates
+
+# NODE musi korzystać z certyfikatu systemowego
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+
+# Konfiguracja npm + token
 RUN if [ -n "$NPM_REGISTRY" ]; then \
-    echo "registry=${NPM_REGISTRY}" > .npmrc && \
-    if [ -n "$NPM_AUTH_TOKEN" ]; then \
-      REGISTRY_HOST=$(echo "$NPM_REGISTRY" | sed 's|https\?://||') && \
-      echo "//${REGISTRY_HOST}:_authToken=${NPM_AUTH_TOKEN}" >> .npmrc; \
-    fi; \
+      echo "registry=${NPM_REGISTRY}" > .npmrc ; \
+      echo "strict-ssl=true" >> .npmrc ; \
+      if [ -n "$NPM_AUTH_TOKEN" ]; then \
+        REGISTRY_HOST=$(echo "$NPM_REGISTRY" | sed 's|https\?://||'); \
+        echo "//${REGISTRY_HOST}:_authToken=${NPM_AUTH_TOKEN}" >> .npmrc ; \
+      fi ; \
     fi
 
 COPY package.json package-lock.json ./
+
 RUN npm ci --include=dev
 
 COPY . .
 
-# API calls will be relative — nginx proxies /api to backend
 ENV VITE_API_URL=""
-RUN npx vite build
+RUN npm run build
 
-# Stage 2: Serve with nginx
+
+# Stage 2 – Serve via nginx
 FROM nginx:alpine
 
 COPY --from=build /app/dist /usr/share/nginx/html
