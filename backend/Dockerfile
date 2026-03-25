@@ -1,18 +1,40 @@
-# syntax=docker/dockerfile:1
-FROM python:3.11
+# ============================
+# Stage 1 – BUILDER
+# ============================
+FROM python:3.11-slim AS builder
+
+# Utworzenie virtualenv
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Kopiujemy wymagania
+COPY requirements.txt .
+
+# Instalujemy zależności z sekretem pip.conf
+RUN --mount=type=secret,id=pip_conf,target=/etc/pip.conf \
+    --mount=type=secret,id=ca_cert,target=/etc/ssl/certs/ca.pem \
+    pip install \
+        --trusted-host host.com.pl \
+        --trusted-host pypi.org \
+        --trusted-host files.pythonhosted.org \
+        --no-cache-dir -r requirements.txt
+
+
+# ============================
+# Stage 2 – FINAL IMAGE
+# ============================
+FROM python:3.11-slim
+
+# Wrzucamy virtualenv z buildera
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
 
-COPY requirements.txt .
-
-RUN --mount=type=secret,id=pip_conf,target=/etc/pip.conf \
-    --mount=type=secret,id=ca_cert,target=/usr/local/share/ca-certificates/ca.crt \
-    update-ca-certificates && \
-    pip install --no-cache-dir -r requirements.txt
-
+# Kopiujemy cały kod aplikacji
 COPY . .
 
-# Create data directory for SQLite
+# Tworzymy katalog na SQLite
 RUN mkdir -p /data
 
 EXPOSE 8000
