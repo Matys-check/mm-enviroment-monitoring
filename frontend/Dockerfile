@@ -1,7 +1,19 @@
 # Stage 1: Build
 FROM node:20-alpine AS build
 
+ARG NPM_REGISTRY=""
+ARG NPM_AUTH_TOKEN=""
+
 WORKDIR /app
+
+# Configure JFrog/custom npm registry if provided
+RUN if [ -n "$NPM_REGISTRY" ]; then \
+    echo "registry=${NPM_REGISTRY}" > .npmrc && \
+    if [ -n "$NPM_AUTH_TOKEN" ]; then \
+      REGISTRY_HOST=$(echo "$NPM_REGISTRY" | sed 's|https\?://||') && \
+      echo "//${REGISTRY_HOST}:_authToken=${NPM_AUTH_TOKEN}" >> .npmrc; \
+    fi; \
+    fi
 
 COPY package.json package-lock.json ./
 RUN npm ci
