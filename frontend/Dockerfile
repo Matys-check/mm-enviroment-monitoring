@@ -16,7 +16,7 @@ RUN if [ -n "$NPM_REGISTRY" ]; then \
     fi
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --include=dev
 
 COPY . .
 
