@@ -4,6 +4,7 @@ services:
       context: ./backend
       secrets:
         - pip_conf
+        - ca_cert
     container_name: monitor-backend
     restart: unless-stopped
     environment:
@@ -48,6 +49,8 @@ services:
 secrets:
   pip_conf:
     file: /etc/pip.conf
+  ca_cert:
+    file: /etc/pki/ca-trust/source/anchors/ca.crt
 
 volumes:
   db_data:
