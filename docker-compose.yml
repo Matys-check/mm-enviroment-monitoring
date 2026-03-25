@@ -1,6 +1,9 @@
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      secrets:
+        - pip_conf
     container_name: monitor-backend
     restart: unless-stopped
     environment:
@@ -41,6 +44,10 @@ services:
       start_period: 5s
     networks:
       - monitor
+
+secrets:
+  pip_conf:
+    file: /etc/pip.conf
 
 volumes:
   db_data:
