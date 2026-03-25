@@ -153,7 +153,7 @@ export default function Admin() {
               </button>
             </form>
             <button
-              onClick={() => (window.location.href = '/')}
+              onClick={() => (window.location.href = '/dashboard/')}
               style={{
                 width: '100%',
                 padding: '12px 0',

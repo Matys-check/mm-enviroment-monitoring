@@ -2,22 +2,46 @@
 
 Dashboard do monitorowania serwera, aplikacji i serwisow. React + FastAPI + SQLite.
 
+Aplikacja jest serwowana pod subpath `/dashboard/` — gotowa do pracy za centralnym reverse proxy.
+
 ## Co robi
 
-- **Dashboard** (`/`) — lista aplikacji z live statusem, healthchecki, szybkie metryki CPU/RAM/GPU
-- **Monitoring** (`/resources`) — wykresy CPU/RAM/Disk/GPU, procesy, siec, kontenery Docker
-- **Activity Feed** (`/events`) — timeline zmian statusow, alertow, spike'ow, zmian w Docker
-- **Admin** (`/admin`) — CRUD aplikacji i healthcheckow (zabezpieczony haslem)
+- **Dashboard** (`/dashboard/`) — lista aplikacji z live statusem, healthchecki, szybkie metryki CPU/RAM/GPU
+- **Monitoring** (`/dashboard/resources`) — wykresy CPU/RAM/Disk/GPU, procesy, siec, kontenery Docker
+- **Activity Feed** (`/dashboard/events`) — timeline zmian statusow, alertow, spike'ow, zmian w Docker
+- **Admin** (`/dashboard/admin`) — CRUD aplikacji i healthcheckow (zabezpieczony haslem)
 
 ---
 
-## Wdrozenie na serwerze (Docker Compose)
+## Architektura
+
+```
+Internet (HTTPS :443)
+        |
+   Centralny Nginx        <-- SSL cert (Let's Encrypt)
+   (reverse proxy)
+        |
+   /dashboard/* --> monitor-frontend:80
+        |
+   Wewnetrzny Nginx       <-- statyczne pliki React + proxy API
+        |
+   /dashboard/api/* --> monitor-backend:8000
+```
+
+- **Centralny nginx** — terminacja SSL, routing do roznych aplikacji po subpath
+- **Wewnetrzny nginx** (w kontenerze frontend) — serwuje React SPA + proxy do backendu
+- Ruch miedzy kontenerami po HTTP (siec Docker) — SSL nie potrzebny wewnatrz
+
+---
+
+## Wdrozenie krok po kroku
 
 ### Wymagania
 
 - Docker + Docker Compose
 - Git
-- (Opcjonalnie) NVIDIA GPU + sterowniki do monitoringu GPU
+- Centralny nginx (reverse proxy) z certyfikatem SSL
+- (Opcjonalnie) NVIDIA GPU + NVIDIA Container Toolkit (Linux)
 
 ### Krok 1: Sklonuj repo
 
@@ -33,34 +57,43 @@ cp .env.example .env
 nano .env
 ```
 
-Edytuj `.env`:
-
 ```env
 # Haslo do panelu admina (ZMIEN NA SWOJE!)
 ADMIN_PASSWORD=TwojeSilneHaslo123!
 
-# Port na ktorym bedzie dostepna aplikacja
-APP_PORT=80
+# Port na ktorym bedzie dostepna aplikacja wewnatrz serwera
+APP_PORT=3100
 
-# CORS - jesli za reverse proxy, podaj domene
-# Dla jednej domeny:
-CORS_ORIGINS=https://monitor.twojadomena.pl
-# Dla wielu:
-# CORS_ORIGINS=https://monitor.twojadomena.pl,https://admin.twojadomena.pl
-# Pozwol na wszystko (dev):
-# CORS_ORIGINS=*
+# CORS - domena przez ktora uzytkownik wchodzi
+CORS_ORIGINS=https://twojadomena.pl
 
-# Sciezka do bazy (nie zmieniaj jesli nie musisz)
+# Sciezka do bazy (nie zmieniaj)
 DB_PATH=/data/dashboard.db
 ```
 
 ### Krok 3: Uruchom
 
+**Standardowo (bez GPU):**
 ```bash
 docker compose up -d --build
 ```
 
-Poczekaj az oba kontenery beda healthy:
+**Z GPU (NVIDIA — wymaga Container Toolkit na Linux):**
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+```
+
+**Z ignorowaniem certyfikatow SSL (jesli pip/npm nie ufa CA serwera):**
+```bash
+docker compose -f docker-compose.yml -f docker-compose.nocert.yml up -d --build
+```
+
+**GPU + ignorowanie certyfikatow:**
+```bash
+docker compose -f docker-compose.yml -f docker-compose.nocert.yml -f docker-compose.gpu.yml up -d --build
+```
+
+### Krok 4: Sprawdz status
 
 ```bash
 docker ps
@@ -69,68 +102,48 @@ docker ps
 # monitor-frontend   Up 25s (healthy)
 ```
 
-### Krok 4: Sprawdz logi
-
 ```bash
+# Sprawdz logi backendu
 docker logs monitor-backend 2>&1 | head -20
 
 # Szukaj linii:
-# 🔑 API Key: PXlUhnO7...bEB0
-# 🔐 Admin Password: ********
+# API Key: PXlUhnO7...bEB0
+# Admin Password: ********
 ```
 
-### Krok 5: Otworz w przegladarce
+### Krok 5: Skonfiguruj centralny nginx
 
-```
-http://<IP-serwera>:80
-```
-
-Zaloguj sie do admina: kliknij **Admin** w nawigacji, wpisz haslo z `.env`.
-
----
-
-## Konfiguracja za reverse proxy
-
-Aplikacja wystawia **jeden port** (domyslnie `80`). Frontend nginx wewnatrz kontenera obsluguje i pliki React (`/`) i proxy do API (`/api/*`). Wystarczy wskazac reverse proxy na ten jeden port.
-
-### Nginx Proxy Manager / nginx
+Dodaj do konfiguracji centralnego nginx:
 
 ```nginx
-server {
-    listen 443 ssl;
-    server_name monitor.twojadomena.pl;
-
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
-
-    location / {
-        proxy_pass http://127.0.0.1:80;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
+# Monitor Dashboard
+location /dashboard/ {
+    proxy_pass http://127.0.0.1:3100/dashboard/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
 }
 ```
 
-### Traefik (labels w docker-compose.yml)
+> **Uwaga:** Port `3100` musi odpowiadac `APP_PORT` w `.env`.
 
-```yaml
-labels:
-  - "traefik.enable=true"
-  - "traefik.http.routers.monitor.rule=Host(`monitor.twojadomena.pl`)"
-  - "traefik.http.services.monitor.loadbalancer.server.port=80"
-```
-
-### Zmiana portu
+Zrestartuj centralny nginx:
 
 ```bash
-# Jesli port 80 jest zajety:
-APP_PORT=8090 docker compose up -d --build
+nginx -t && nginx -s reload
 ```
+
+### Krok 6: Otworz w przegladarce
+
+```
+https://twojadomena.pl/dashboard/
+```
+
+Zaloguj sie do admina: kliknij **Admin** w nawigacji, wpisz haslo z `.env`.
 
 ---
 
@@ -138,7 +151,7 @@ APP_PORT=8090 docker compose up -d --build
 
 ### Windows (Docker Desktop)
 
-Dziala automatycznie jesli masz karte NVIDIA z zainstalowanymi sterownikami.
+Dziala automatycznie jesli masz karte NVIDIA z zainstalowanymi sterownikami. Docker Desktop na Windows korzysta z WSL2 ktory przekazuje GPU do kontenerow bez dodatkowej konfiguracji. Nie uzywaj `docker-compose.gpu.yml` na Windows — spowoduje blad.
 
 ### Linux
 
@@ -159,11 +172,30 @@ sudo apt-get install -y nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 
-# 3. Zrestartuj aplikacje
-docker compose up -d --build
+# 3. Uruchom z GPU
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 ```
 
+### Multi-GPU
+
+Aktualnie dashboard wyswietla metryki **pierwszego GPU**. Jesli masz wiele kart (np. 2x H100), widoczna bedzie tylko GPU 0. Monitoring wielu GPU wymaga rozszerzenia backendu.
+
 Bez GPU toolkit dashboard dziala normalnie — sekcja GPU po prostu sie nie wyswietla.
+
+---
+
+## Pliki Docker Compose
+
+| Plik | Opis | Kiedy uzywac |
+|------|------|-------------|
+| `docker-compose.yml` | Glowna konfiguracja | Zawsze (bazowy plik) |
+| `docker-compose.gpu.yml` | NVIDIA GPU passthrough | Linux z NVIDIA Container Toolkit |
+| `docker-compose.nocert.yml` | Ignoruje SSL certy przy pip/npm | Serwer za corporate proxy / self-signed CA |
+
+Laczyc przez `-f`:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.nocert.yml up -d --build
+```
 
 ---
 
@@ -173,6 +205,8 @@ Bez GPU toolkit dashboard dziala normalnie — sekcja GPU po prostu sie nie wysw
 cd /opt/monitor
 git pull
 docker compose up -d --build
+# Lub z GPU:
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 ```
 
 Baza danych jest w Docker volume (`db_data`) — nie zostanie usunieta przy rebuildzie.
@@ -269,7 +303,7 @@ docker compose up -d --build backend
 | `POST/PUT/DELETE /api/admin/apps/{id}` | CRUD aplikacji |
 | `POST/PUT/DELETE /api/admin/healthchecks/{id}` | CRUD healthcheckow |
 
-Dokumentacja Swagger: `http://<IP>:<PORT>/docs`
+Dokumentacja Swagger: `https://twojadomena.pl/dashboard/docs`
 
 ---
 
@@ -278,7 +312,9 @@ Dokumentacja Swagger: `http://<IP>:<PORT>/docs`
 | Problem | Rozwiazanie |
 |---------|------------|
 | Backend nie startuje | `docker logs monitor-backend` — sprawdz bledy |
-| Frontend nie laduje API | `curl http://localhost/api/dashboard` — czy backend odpowiada? |
+| Frontend nie laduje API | `curl http://localhost:3100/dashboard/api/dashboard` |
 | GPU nie wyswietla sie | `docker exec monitor-backend nvidia-smi` — czy dziala w kontenerze? |
 | Docker eventy nie pojawiaja sie | Poczekaj ~60s (2 cykle po 30s — pierwszy buduje stan, drugi porownuje) |
 | Baza uszkodzona | `docker compose down && docker volume rm monitor_db_data && docker compose up -d --build` |
+| Blad NVIDIA driver przy starcie | Nie uzywaj `docker-compose.gpu.yml` — uruchom bez GPU override |
+| npm/pip SSL error podczas buildu | Uzyj `docker-compose.nocert.yml` override |

@@ -8,7 +8,7 @@ import Admin from './pages/Admin'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <BrowserRouter>
+  <BrowserRouter basename="/dashboard">
     <Routes>
       <Route path="/" element={<Dashboard />} />
       <Route path="/resources" element={<Monitoring />} />
