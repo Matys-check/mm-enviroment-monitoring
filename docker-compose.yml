@@ -3,7 +3,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      network: host          # <--- KLUCZOWA RÓŻNICA
+      network: host
       secrets:
         - pip_conf
         - ca_cert
@@ -28,9 +28,13 @@ services:
   frontend:
     build:
       context: ./frontend
+      dockerfile: Dockerfile
+      network: host
+      secrets:
+        - ca_cert
       args:
-        - NPM_REGISTRY=${NPM_REGISTRY:-}
-        - NPM_AUTH_TOKEN=${NPM_AUTH_TOKEN:-}
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+        NPM_AUTH_TOKEN: ${NPM_AUTH_TOKEN:-}
     container_name: monitor-frontend
     restart: unless-stopped
     ports:
@@ -51,7 +55,7 @@ secrets:
   pip_conf:
     file: /etc/pip.conf
   ca_cert:
-    file: /etc/pki/ca-trust/source/anchors/ca.crt
+    file: /etc/pki/ca-trust/source/anchors/jfrog-ca.crt
 
 volumes:
   db_data:
