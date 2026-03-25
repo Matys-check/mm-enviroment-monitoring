@@ -21,7 +21,11 @@ services:
       - monitor
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - NPM_REGISTRY=${NPM_REGISTRY:-}
+        - NPM_AUTH_TOKEN=${NPM_AUTH_TOKEN:-}
     container_name: monitor-frontend
     restart: unless-stopped
     ports:
