@@ -1,6 +1,6 @@
 // API configuration — in Docker, VITE_API_URL="" so we use base path from Vite
 const BASE_PATH = import.meta.env.BASE_URL?.replace(/\/$/, '') || '';
-export const API_URL = import.meta.env.VITE_API_URL ?? BASE_PATH;
+export const API_URL = import.meta.env.VITE_API_URL || BASE_PATH;
 
 // Design tokens (mirror CSS variables for JS usage)
 export const T = {
